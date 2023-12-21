@@ -52,4 +52,9 @@ public class Property : ModelBase
     public string Default { get; set; }
 
     public ValueGenerated? ValueGenerated { get; set; }
+
+    /// <summary>
+    /// extendedproperty MS_Description
+    /// </summary>
+    public string? Description { get; set; }
 }

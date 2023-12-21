@@ -288,6 +288,12 @@ public class MappingClassTemplate : CodeTemplateBase
             CodeBuilder.Append($".HasDefaultValueSql({property.Default.ToLiteral()})");
         }
 
+        if(!string.IsNullOrEmpty(property.Description))
+        {
+            CodeBuilder.AppendLine();
+            CodeBuilder.Append($".HasComment(\"{property.Description}\")");
+        }
+
         switch (property.ValueGenerated)
         {
             case ValueGenerated.OnAdd:

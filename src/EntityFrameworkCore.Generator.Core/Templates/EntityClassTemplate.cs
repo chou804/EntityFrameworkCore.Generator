@@ -129,14 +129,20 @@ public class EntityClassTemplate : CodeTemplateBase
             var propertyType = property.SystemType.ToType();
             var propertyName = property.PropertyName.ToSafeName();
 
+            // if (Options.Data.Entity.Document)
+            // {
+            //     CodeBuilder.AppendLine("/// <summary>");
+            //     CodeBuilder.AppendLine($"/// Gets or sets the property value representing column '{property.ColumnName}'.");
+            //     CodeBuilder.AppendLine("/// </summary>");
+            //     CodeBuilder.AppendLine("/// <value>");
+            //     CodeBuilder.AppendLine($"/// The property value representing column '{property.ColumnName}'.");
+            //     CodeBuilder.AppendLine("/// </value>");
+            // }
             if (Options.Data.Entity.Document)
             {
                 CodeBuilder.AppendLine("/// <summary>");
-                CodeBuilder.AppendLine($"/// Gets or sets the property value representing column '{property.ColumnName}'.");
+                CodeBuilder.AppendLine($"/// {property.Description}");
                 CodeBuilder.AppendLine("/// </summary>");
-                CodeBuilder.AppendLine("/// <value>");
-                CodeBuilder.AppendLine($"/// The property value representing column '{property.ColumnName}'.");
-                CodeBuilder.AppendLine("/// </value>");
             }
 
             if (property.IsNullable == true && (property.SystemType.IsValueType || Options.Project.Nullable))

@@ -11,6 +11,7 @@ using EntityFrameworkCore.Generator.Options;
 
 using Humanizer;
 
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Scaffolding.Metadata;
 using Microsoft.EntityFrameworkCore.Scaffolding.Metadata.Internal;
@@ -66,6 +67,8 @@ public class ModelGenerator
 
         var tables = databaseModel.Tables;
 
+        var columnDescs = GetMsDescriptions(_options.Database.ConnectionString);
+
         foreach (var table in tables)
         {
             if (IsIgnored(table, _options.Database.Exclude))
@@ -79,7 +82,7 @@ public class ModelGenerator
             _options.Variables.Set(VariableConstants.TableSchema, ToLegalName(table.Schema));
             _options.Variables.Set(VariableConstants.TableName, ToLegalName(table.Name));
 
-            var entity = GetEntity(entityContext, table);
+            var entity = GetEntity(entityContext, table, columnDescs: columnDescs);
             GetModels(entity);
         }
 
@@ -89,14 +92,55 @@ public class ModelGenerator
         return entityContext;
     }
 
+    private ICollection<ColumnDesc> GetMsDescriptions(string connectionString)
+    {
+        using var sqlConnection = new SqlConnection(connectionString);
+        using var dbCommand = sqlConnection.CreateCommand();
+        dbCommand.CommandText = @"SELECT
+   SCHEMA_NAME(tbl.schema_id) AS SchemaName,	
+   tbl.name AS TableName, 
+   clmns.name AS ColumnName,
+   CAST(p.value AS sql_variant) AS ExtendedPropertyValue
+FROM
+   sys.tables AS tbl
+   INNER JOIN sys.all_columns AS clmns ON clmns.object_id=tbl.object_id
+   INNER JOIN sys.extended_properties AS p ON p.major_id=tbl.object_id AND p.minor_id=clmns.column_id AND p.class=1
+WHERE p.name = 'MS_Description'";
 
-    private Entity GetEntity(EntityContext entityContext, DatabaseTable tableSchema, bool processRelationships = true, bool processMethods = true)
+        sqlConnection.Open();
+        var dr = dbCommand.ExecuteReader();
+
+        var columnDescs = new List<ColumnDesc>();
+        while (dr.Read())
+        {
+            columnDescs.Add(new ColumnDesc
+            {
+                 SchemaName = dr.GetString(0),
+                 TableName = dr.GetString(1),
+                 ColumnName = dr.GetString(2),
+                 ExtendedPropertyValue = dr.GetString(3),
+            });
+
+            _logger.LogDebug($"{dr.GetString(0)}\t{dr.GetString(1)}\t{dr.GetString(2)}\t{dr.GetString(3)}");
+        }
+
+        return columnDescs;
+    }
+    public class ColumnDesc
+    {
+        public string SchemaName {get;set;} = null!;
+        public string TableName {get;set;} = null!;
+        public string ColumnName {get;set;} = null!;
+        public string ExtendedPropertyValue {get;set;} = null!;
+    }
+
+    private Entity GetEntity(EntityContext entityContext, DatabaseTable tableSchema, bool processRelationships = true, bool processMethods = true, ICollection<ColumnDesc> columnDescs = null)
     {
         Entity entity = entityContext.Entities.ByTable(tableSchema.Name, tableSchema.Schema)
                         ?? CreateEntity(entityContext, tableSchema);
 
         if (!entity.Properties.IsProcessed)
-            CreateProperties(entity, tableSchema.Columns);
+            CreateProperties(entity, tableSchema.Columns, columnDescs);
 
         if (processRelationships && !entity.Relationships.IsProcessed)
             CreateRelationships(entityContext, entity, tableSchema);
@@ -170,7 +214,7 @@ public class ModelGenerator
     }
 
 
-    private void CreateProperties(Entity entity, IEnumerable<DatabaseColumn> columns)
+    private void CreateProperties(Entity entity, IEnumerable<DatabaseColumn> columns, ICollection<ColumnDesc> columnDescs = null)
     {
         foreach (var column in columns)
         {
@@ -232,6 +276,12 @@ public class ModelGenerator
             property.Size = mapping.Size;
 
             property.IsProcessed = true;
+            
+            //MS_Description
+            property.Description = columnDescs.FirstOrDefault(
+                t=> t.SchemaName == table.Schema &&
+                t.TableName == table.Name &&
+                t.ColumnName == column.Name)?.ExtendedPropertyValue;
         }
 
         entity.Properties.IsProcessed = true;
